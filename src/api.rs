@@ -271,11 +271,11 @@ fn node_view(
         "traffic_mode": node.traffic_mode,
         "traffic_reset_day": node.traffic_reset_day,
         "exclude_traffic": node.exclude_traffic,
-        "total_rx": if !full && node.exclude_traffic { 0 } else { traffic.total_rx },
-        "total_tx": if !full && node.exclude_traffic { 0 } else { traffic.total_tx },
-        "month_rx": if !full && node.exclude_traffic { 0 } else { traffic.month_rx },
-        "month_tx": if !full && node.exclude_traffic { 0 } else { traffic.month_tx },
-        "month_used": if !full && node.exclude_traffic {
+        "total_rx": if node.exclude_traffic { 0 } else { traffic.total_rx },
+        "total_tx": if node.exclude_traffic { 0 } else { traffic.total_tx },
+        "month_rx": if node.exclude_traffic { 0 } else { traffic.month_rx },
+        "month_tx": if node.exclude_traffic { 0 } else { traffic.month_tx },
+        "month_used": if node.exclude_traffic {
             0
         } else {
             traffic.month_used(&node.traffic_mode)
@@ -283,8 +283,8 @@ fn node_view(
         "month_start": traffic.month_start,
         // Of the same nature as the month and lifetime figures beside it, which
         // the public page already shows, so this one is public as well.
-        "day_rx": if !full && node.exclude_traffic { 0 } else { traffic.day_rx },
-        "day_tx": if !full && node.exclude_traffic { 0 } else { traffic.day_tx },
+        "day_rx": if node.exclude_traffic { 0 } else { traffic.day_rx },
+        "day_tx": if node.exclude_traffic { 0 } else { traffic.day_tx },
     });
     // An allowlist rather than a denylist, for the panel as well: the agent ships
     // from its own repository, so a field added there would otherwise reach
@@ -295,7 +295,7 @@ fn node_view(
         m.retain(|k, _| PUBLIC_METRICS.contains(&k.as_str()) || (full && k == "iface"));
         // The same figures as the top-level ones, from the same row. Both official
         // themes refuse a node's live view without them.
-        let (rx_tot, tx_tot, rx_mon, tx_mon) = if !full && node.exclude_traffic {
+        let (rx_tot, tx_tot, rx_mon, tx_mon) = if node.exclude_traffic {
             (0, 0, 0, 0)
         } else {
             (traffic.total_rx, traffic.total_tx, traffic.month_rx, traffic.month_tx)
