@@ -87,6 +87,8 @@ export type Node = {
   public_remark?: string
   /** Panel only. Whether going offline and returning are announced. */
   notify?: boolean
+  /** Panel only. Whether latency timeout and recovery are announced. */
+  notify_ping?: boolean
   /** Whether this node is excluded from public traffic statistics. */
   exclude_traffic?: boolean
 }

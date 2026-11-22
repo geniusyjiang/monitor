@@ -307,6 +307,7 @@ export function NodeForm({ node, nodes, onClose, onSaved }: {
       traffic_limit: Math.round(Number(limitGib) * GIB),
       traffic_reset_day: resetOn,
       notify: !!form.notify,
+      notify_ping: !!form.notify_ping,
       exclude_traffic: !!form.exclude_traffic,
       ipv4_pin: (form.ipv4_pin ?? "").trim(),
       ipv6_pin: (form.ipv6_pin ?? "").trim(),
@@ -370,12 +371,15 @@ export function NodeForm({ node, nodes, onClose, onSaved }: {
                   <Input value={form.remark ?? ""} onChange={(e) => set("remark", e.target.value)} placeholder="仅管理员可见" />
                 </Field>
               </div>
-              <div className="grid gap-3 sm:grid-cols-2">
+              <div className="grid gap-3 sm:grid-cols-3">
                 <OptionRow title="公开显示" hint="关闭后只在管理后台可见" toggle>
                   <Switch checked={form.public} onCheckedChange={(v) => set("public", v)} />
                 </OptionRow>
-                <OptionRow title="离线通知" hint="掉线超过宽限期、恢复时各推一条" toggle>
+                <OptionRow title="离线通知" hint="掉线超过宽限期提醒" toggle>
                   <Switch checked={!!form.notify} onCheckedChange={(v) => set("notify", v)} />
+                </OptionRow>
+                <OptionRow title="超时通知" hint="探测超时超宽限期提醒" toggle>
+                  <Switch checked={!!form.notify_ping} onCheckedChange={(v) => set("notify_ping", v)} />
                 </OptionRow>
               </div>
             </section>

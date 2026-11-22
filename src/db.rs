@@ -126,6 +126,7 @@ CREATE TABLE IF NOT EXISTS node (
   -- nor loses the recovery that pairs with it.
   down_since INTEGER NOT NULL DEFAULT 0,
   exclude_traffic INTEGER NOT NULL DEFAULT 0,
+  notify_ping INTEGER NOT NULL DEFAULT 0,
   created_at INTEGER NOT NULL
 );
 
@@ -237,7 +238,7 @@ CREATE TABLE IF NOT EXISTS session (
 /// cannot: `open` runs `SCHEMA` before migrating, and on an older file the
 /// column is not there yet. `an_upgraded_release_matches_a_fresh_database`
 /// holds every migration to these rules, starting from v1.0.0's schema.
-const SCHEMA_VERSION: i64 = 14;
+const SCHEMA_VERSION: i64 = 15;
 
 /// Adds a column older databases lack. A duplicate column indicates the
 /// migration has already run; every other error must propagate.
@@ -418,6 +419,10 @@ fn migrate_to_14(conn: &Connection) -> Result<()> {
     add_column(conn, "node", "exclude_traffic INTEGER NOT NULL DEFAULT 0")
 }
 
+fn migrate_to_15(conn: &Connection) -> Result<()> {
+    add_column(conn, "node", "notify_ping INTEGER NOT NULL DEFAULT 0")
+}
+
 /// Brings a database already in service up to `SCHEMA_VERSION` and stamps it.
 /// `from` is its current version, so a fresh file passes `SCHEMA_VERSION` and
 /// receives only the stamp.
@@ -472,6 +477,9 @@ fn migrate(conn: &Connection, from: i64) -> Result<()> {
     }
     if from < 14 {
         migrate_to_14(&tx)?;
+    }
+    if from < 15 {
+        migrate_to_15(&tx)?;
     }
     tx.execute_batch(&format!("PRAGMA user_version = {SCHEMA_VERSION}"))?;
     tx.commit()?;
@@ -594,6 +602,9 @@ pub struct Node {
     /// Whether this node's traffic is excluded from public traffic statistics (e.g. landing nodes).
     #[serde(default)]
     pub exclude_traffic: bool,
+    /// Whether latency timeout and recovery are announced.
+    #[serde(default)]
+    pub notify_ping: bool,
     /// What the agent authenticates with. Readable so the panel can display an
     /// install command on demand; it never leaves the admin view.
     #[serde(default)]
@@ -622,6 +633,7 @@ pub struct NodePatch {
     pub traffic_mode: Option<String>,
     pub traffic_reset_day: Option<u32>,
     pub notify: Option<bool>,
+    pub notify_ping: Option<bool>,
     pub exclude_traffic: Option<bool>,
     pub country_pin: Option<String>,
     pub ipv4_pin: Option<String>,
@@ -1252,7 +1264,8 @@ impl Db {
                                  ipv4_pin=COALESCE(?15,ipv4_pin), ipv6_pin=COALESCE(?16,ipv6_pin),
                                  group_name=COALESCE(?17,group_name),
                                  public_remark=COALESCE(?18,public_remark),
-                                 exclude_traffic=COALESCE(?19,exclude_traffic)
+                                 exclude_traffic=COALESCE(?19,exclude_traffic),
+                                 notify_ping=COALESCE(?20,notify_ping)
                  WHERE id=?1",
             )?;
             for id in ids {
@@ -1275,7 +1288,8 @@ impl Db {
                     n.ipv6_pin,
                     n.group,
                     n.public_remark,
-                    n.exclude_traffic
+                    n.exclude_traffic,
+                    n.notify_ping
                 ])?;
                 // Dropping the transaction uncommitted rolls back the nodes
                 // already updated.
@@ -2878,6 +2892,7 @@ fn row_to_node(r: &rusqlite::Row<'_>) -> Node {
         ipv6_pin: s("ipv6_pin"),
         last_seen: n("last_seen"),
         notify: n("notify") != 0,
+        notify_ping: n("notify_ping") != 0,
         down_since: n("down_since"),
         exclude_traffic: n("exclude_traffic") != 0,
         token: s("token"),

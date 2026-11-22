@@ -68,7 +68,7 @@ pub const DEFAULT_BODY: &str =
 pub const DEFAULT_TEXT: &str = "{{title}}\n{{message}}";
 
 /// Numeric settings as `(key, min, max, default, the panel's name for it)`.
-const NUMBERS: [(&str, i64, i64, i64, &str); 3] = [
+const NUMBERS: [(&str, i64, i64, i64, &str); 4] = [
     // Minutes a node may stay away before it is reported. Agents reconnect within
     // seconds of a network or hub interruption, which one minute already covers.
     // Capped at FLAP_GRACE: a longer grace would outwait a flapping node too, and
@@ -76,6 +76,8 @@ const NUMBERS: [(&str, i64, i64, i64, &str); 3] = [
     // during an outage would delay its alert by up to one more grace period.
     // Nodes expected to stay down for hours have their alerts switched off.
     ("notify_grace", 1, FLAP_GRACE / 60, 3, "离线宽限期"),
+    // Minutes a probe target may stay unreachable before an alert is raised; 0 disables.
+    ("notify_ping_grace", 0, 30, 3, "超时宽限期"),
     // Percent of the allowance that raises the first traffic alert; 0 disables
     // traffic alerts.
     ("notify_traffic", 0, 100, 80, "流量提醒"),
@@ -749,7 +751,7 @@ fn gib(bytes: i64) -> String {
 
 #[derive(Default, Debug)]
 struct PingState {
-    fails: u32,
+    first_fail: i64,
     alerted: bool,
 }
 
@@ -761,31 +763,33 @@ fn ping_tracker() -> &'static std::sync::Mutex<HashMap<(i64, i64), PingState>> {
 
 /// Checks one ping result reported by an agent and triggers alerts if timeout persists.
 pub fn check_ping(app: &App, node_id: i64, task_id: i64, latency: i64) {
-    if channels(app).is_empty() {
+    let grace_min = number(app, "notify_ping_grace");
+    if grace_min == 0 || channels(app).is_empty() {
         return;
     }
-    let Some(node) = app.db.node(node_id).ok().flatten() else {
-        return;
-    };
-    if !node.notify {
+    let Some(node) = app.db.node(node_id).ok().flatten() else { return };
+    if !node.notify_ping {
         return;
     }
 
     let failed = latency < 0;
+    let now = Utc::now().timestamp();
+    let grace_secs = grace_min * 60;
     let mut to_send = None;
     {
         let mut tracker = ping_tracker().lock().unwrap_or_else(|e| e.into_inner());
         let state = tracker.entry((node_id, task_id)).or_default();
         if failed {
-            state.fails += 1;
-            // Trigger alert on 3 consecutive failures
-            if state.fails >= 3 && !state.alerted {
+            if state.first_fail == 0 {
+                state.first_fail = now;
+            }
+            if now - state.first_fail >= grace_secs && !state.alerted {
                 state.alerted = true;
-                to_send = Some((true, state.fails, latency));
+                to_send = Some((true, grace_min, latency));
             }
         } else {
             let was_alerted = state.alerted;
-            state.fails = 0;
+            state.first_fail = 0;
             state.alerted = false;
             if was_alerted {
                 to_send = Some((false, 0, latency));
@@ -793,7 +797,7 @@ pub fn check_ping(app: &App, node_id: i64, task_id: i64, latency: i64) {
         }
     }
 
-    if let Some((is_down, fails, lat)) = to_send {
+    if let Some((is_down, duration_min, lat)) = to_send {
         let task_name = app
             .db
             .ping_tasks()
@@ -803,30 +807,12 @@ pub fn check_ping(app: &App, node_id: i64, task_id: i64, latency: i64) {
 
         if is_down {
             let title = format!("🔴 {} 延迟超时", node.name);
-            let message = format!("节点「{}」到「{}」连接超时（连续 {} 次失败）", node.name, task_name, fails);
-            send(
-                app,
-                Note {
-                    event: "ping_down",
-                    node: node.name,
-                    title,
-                    message,
-                    ..Default::default()
-                },
-            );
+            let message = format!("节点「{}」到「{}」连接超时（持续超过 {} 分钟）", node.name, task_name, duration_min);
+            send(app, Note { event: "ping_down", node: node.name, title, message, ..Default::default() });
         } else {
             let title = format!("🟢 {} 延迟恢复", node.name);
             let message = format!("节点「{}」到「{}」已恢复正常（延迟 {} ms）", node.name, task_name, lat);
-            send(
-                app,
-                Note {
-                    event: "ping_up",
-                    node: node.name,
-                    title,
-                    message,
-                    ..Default::default()
-                },
-            );
+            send(app, Note { event: "ping_up", node: node.name, title, message, ..Default::default() });
         }
     }
 }

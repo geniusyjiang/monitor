@@ -334,6 +334,7 @@ fn node_view(
         view["country_auto"] = json!(node.country);
         view["remark"] = json!(node.remark);
         view["notify"] = json!(node.notify);
+        view["notify_ping"] = json!(node.notify_ping);
     }
     view
 }
@@ -1242,6 +1243,7 @@ pub async fn update_node(
 pub struct BatchPatch {
     group: Option<String>,
     notify: Option<bool>,
+    notify_ping: Option<bool>,
 }
 
 #[derive(Deserialize)]
@@ -1265,7 +1267,12 @@ pub async fn update_nodes(
     if ids.is_empty() {
         return bad("没有选中节点");
     }
-    let mut patch = NodePatch { group: patch.group, notify: patch.notify, ..Default::default() };
+    let mut patch = NodePatch {
+        group: patch.group,
+        notify: patch.notify,
+        notify_ping: patch.notify_ping,
+        ..Default::default()
+    };
     if let Some(message) = patch_error(&mut patch) {
         return bad(message);
     }

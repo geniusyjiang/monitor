@@ -137,6 +137,58 @@ function OfflineNodes({ nodes, refresh }: { nodes: Node[]; refresh: () => void }
   )
 }
 
+function PingNodes({ nodes, refresh }: { nodes: Node[]; refresh: () => void }) {
+  const [draft, setDraft] = useState<Map<number, boolean>>(new Map())
+  const [saving, setSaving] = useState(false)
+  const on = (n: Node) => draft.get(n.id) ?? !!n.notify_ping
+  const chosen = new Set(nodes.filter(on).map((n) => n.id))
+  const turnOn = nodes.filter((n) => on(n) && !n.notify_ping).map((n) => n.id)
+  const turnOff = nodes.filter((n) => !on(n) && n.notify_ping).map((n) => n.id)
+  const dirty = turnOn.length + turnOff.length > 0
+
+  if (draft.size && !dirty && !saving) setDraft(new Map())
+
+  const pick = (list: Node[], value: boolean) =>
+    setDraft((old) => {
+      const next = new Map(old)
+      for (const n of list) next.set(n.id, value)
+      return next
+    })
+
+  async function save() {
+    setSaving(true)
+    try {
+      for (const [ids, on] of [[turnOn, true], [turnOff, false]] as const) {
+        if (ids.length) await api("/nodes/batch", { method: "PUT", body: JSON.stringify({ ids, patch: { notify_ping: on } }) })
+      }
+      toast.success("延迟超时通知已保存")
+    } catch (e) {
+      toast.error((e as Error).message)
+    } finally {
+      refresh()
+      setSaving(false)
+    }
+  }
+
+  const pending = [turnOn.length && `打开 ${turnOn.length} 台`, turnOff.length && `关闭 ${turnOff.length} 台`].filter(Boolean)
+  return (
+    <Card className="gap-4 p-5">
+      <div>
+        <h3 className="text-sm font-medium">延迟超时通知</h3>
+        <p className="mt-1 text-xs text-muted-foreground">
+          按节点打开，默认关。已打开 {nodes.filter((n) => n.notify_ping).length} / {nodes.length} 台
+          {pending.length > 0 && <span className="text-foreground">，待保存：{pending.join("、")}</span>}
+        </p>
+      </div>
+      <NodePicker nodes={nodes} chosen={chosen} onPick={pick} disabled={saving} />
+      <div className="flex justify-end gap-2">
+        <Button size="sm" variant="ghost" disabled={!dirty || saving} onClick={() => setDraft(new Map())}>撤销</Button>
+        <Button size="sm" disabled={!dirty || saving} onClick={save}>保存</Button>
+      </div>
+    </Card>
+  )
+}
+
 export function Notify({ nodes, refresh }: { nodes: Node[]; refresh: () => void }) {
   const { s, set, save } = useSettings()
   const [testing, setTesting] = useState(false)
@@ -167,7 +219,7 @@ export function Notify({ nodes, refresh }: { nodes: Node[]; refresh: () => void 
           <div className="min-w-0 flex-1">
             <h3 className="text-sm font-medium">通知渠道</h3>
             <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
-              Telegram 和 Webhook 配了哪个就发哪个，也可以同时用。离线通知在下方按节点打开；流量和到期提醒对填了额度、到期日的节点生效。
+              Telegram 和 Webhook 配了哪个就发哪个，也可以同时用。离线与延迟超时通知在下方按节点打开；流量和到期提醒对填了额度、到期日的节点生效。
             </p>
           </div>
           <Button size="sm" variant="secondary" disabled={testing} onClick={test}>
@@ -260,12 +312,16 @@ export function Notify({ nodes, refresh }: { nodes: Node[]; refresh: () => void 
       </ChannelCard>
 
       <OfflineNodes nodes={nodes} refresh={refresh} />
+      <PingNodes nodes={nodes} refresh={refresh} />
 
       <Card className="gap-4 p-5">
         <h3 className="text-sm font-medium">事件</h3>
-        <div className="grid gap-4 sm:grid-cols-3">
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
           <Field label="离线宽限期（分钟）" hint="断开超过这么久才算离线，1–30">
             <Input type="number" min={1} max={30} value={text("notify_grace")} onChange={(e) => set("notify_grace", e.target.value)} />
+          </Field>
+          <Field label="超时宽限期（分钟）" hint="探测超时超过这么久才提醒，1–30，0 关闭">
+            <Input type="number" min={0} max={30} value={text("notify_ping_grace")} onChange={(e) => set("notify_ping_grace", e.target.value)} />
           </Field>
           <Field label="流量提醒（%）" hint="本期用量达到该比例和 100% 时各提醒一次，0 关闭">
             <Input type="number" min={0} max={100} value={text("notify_traffic")} onChange={(e) => set("notify_traffic", e.target.value)} />
@@ -284,6 +340,7 @@ export function Notify({ nodes, refresh }: { nodes: Node[]; refresh: () => void 
             onClick={() =>
               save({
                 notify_grace: text("notify_grace"),
+                notify_ping_grace: text("notify_ping_grace"),
                 notify_traffic: text("notify_traffic"),
                 notify_expiry: text("notify_expiry"),
                 notify_login: s.notify_login === "off" ? "off" : "on",
