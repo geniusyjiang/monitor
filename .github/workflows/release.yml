@@ -100,7 +100,7 @@ jobs:
       # where `docker run monitor` looks first, ghcr is what the repository
       # publishes alongside its binaries. A fork without the Docker Hub secrets
       # still gets its ghcr image rather than a failed release.
-      - if: startsWith(github.ref, 'refs/tags/')
+      - if: startsWith(github.ref, 'refs/tags/') || github.event_name == 'workflow_dispatch'
         run: |
           cp bin/monitor-hub-x86_64-unknown-linux-musl monitor-hub-amd64
           cp bin/monitor-hub-aarch64-unknown-linux-musl monitor-hub-arm64
