@@ -275,7 +275,11 @@ fn node_view(
         "total_tx": if !full && node.exclude_traffic { 0 } else { traffic.total_tx },
         "month_rx": if !full && node.exclude_traffic { 0 } else { traffic.month_rx },
         "month_tx": if !full && node.exclude_traffic { 0 } else { traffic.month_tx },
-        "month_used": if !full && node.exclude_traffic { 0 } else { traffic.month_used(&node.traffic_mode) },
+        "month_used": if !full && node.exclude_traffic {
+            0
+        } else {
+            traffic.month_used(&node.traffic_mode)
+        },
         "month_start": traffic.month_start,
         // Of the same nature as the month and lifetime figures beside it, which
         // the public page already shows, so this one is public as well.
